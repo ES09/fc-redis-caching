@@ -1,8 +1,25 @@
 const models = require('../../models');
+const redis = require('redis');
+const redisClient = redis.createClient();
+const { promisify } = require('util');
+
+redisClient.on('error', function (err) {
+    console.log('Error : ', err);
+})
+
+const getAsync = promisify(redisClient.get).bind(redisClient);
+
 
 exports.get_products = async ( _ , res) => {
-    const products = await models.Products.findAll();
-    res.render( 'admin/products.html' ,{ products });
+
+    let results = JSON.parse(await getAsync("products:all"));
+    console.log('results : ', results);
+
+    if(!results) {
+        results = await models.Products.findAll();
+    }
+
+    res.render( 'admin/products.html' ,{ products : results });
 }
 
 exports.get_products_write = ( _ , res) => {
@@ -16,6 +33,16 @@ exports.post_products_write = async ( req , res ) => {
         price : req.body.price ,
         description : req.body.description
     })
+
+    try {
+        // await for redis
+        const products = await models.Products.findAll();
+        redisClient.set("products:all", JSON.stringify(products));
+        await redisClient.quit();
+    } catch (e) {
+        console.log(e) // 에러출력
+    }
+    
     res.redirect('/admin/products');
 
 }
